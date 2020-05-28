@@ -94,6 +94,7 @@ struct _ProtobufC_RPC_Server
 
   /* configuration */
   unsigned max_pending_requests_per_connection;
+  int allow_multiple_client_connections;
 };
 
 static inline protobuf_c_boolean
@@ -240,7 +241,7 @@ server_connection_failed (ServerConnection *conn,
   /* invoke server error hook */
   server_failed_literal (conn->server, code, msg);
 
-  server_connection_close (conn, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_BY_REMOTE);
+  server_connection_close (conn, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_FAILURE);
 }
 
 static ServerRequest *
@@ -450,7 +451,7 @@ handle_server_connection_events (int fd,
                                       PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
                                       "closed while calls pending");
           else
-            server_connection_close (conn, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_FAILURE);
+            server_connection_close (conn, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_BY_REMOTE);
           return;
         }
       else
@@ -606,6 +607,16 @@ handle_server_listener_readable (int fd,
                strerror (errno));
       return;
     }
+
+  if (FALSE == server->allow_multiple_client_connections)
+  {
+    if(!GSK_LIST_IS_EMPTY(GET_CONNECTION_LIST (server))) {
+      /* reject new client */
+      close(new_fd);
+      return;
+    }
+  }
+
   conn = allocator->alloc (allocator, sizeof (ServerConnection));
   conn->fd = new_fd;
   protobuf_c_rpc_data_buffer_init (&conn->incoming, server->allocator);
@@ -616,7 +627,7 @@ handle_server_listener_readable (int fd,
   GSK_LIST_APPEND (GET_CONNECTION_LIST (server), conn);
   protobuf_c_rpc_dispatch_watch_fd (server->dispatch, conn->fd, PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_server_connection_events, conn);
-                                
+
   if (server->client_event_handler != NULL)
     server->client_event_handler (PROTOBUF_C_RPC_CLIENT_EVENT_CONNECTED, conn,
                                 PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_NONE);
@@ -637,6 +648,7 @@ server_new_from_fd (ProtobufC_RPC_FD              listening_fd,
   server->underlying = service;
   server->first_connection = server->last_connection = NULL;
   server->max_pending_requests_per_connection = 32;
+  server->allow_multiple_client_connections = TRUE;
   server->address_type = address_type;
   server->error_handler = error_handler;
   server->error_handler_data = "protobuf-c rpc server";
@@ -911,4 +923,11 @@ protobuf_c_rpc_server_set_rpc_protocol (ProtobufC_RPC_Server *server,
                                         ProtobufC_RPC_Protocol protocol)
 {
    server->rpc_protocol = protocol;
+}
+
+
+void
+protobuf_c_rpc_server_allow_multiple_clients(ProtobufC_RPC_Server *server, int allow)
+{
+    server->allow_multiple_client_connections = allow;
 }

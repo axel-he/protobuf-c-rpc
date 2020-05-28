@@ -217,6 +217,14 @@ void protobuf_c_rpc_server_disable_autotimeout(ProtobufC_RPC_Server *server);
 void protobuf_c_rpc_server_set_autotimeout (ProtobufC_RPC_Server *server,
                                             unsigned              timeout_millis);
 
+/**
+ * Enable / disable multiple clients
+ * 
+ * If disabled, a new client connection is rejected immediately
+ * if at least one client connection is already established
+ */
+void protobuf_c_rpc_server_allow_multiple_clients(ProtobufC_RPC_Server *server, int allow);
+
 /* Custom RPC protocol */
 void protobuf_c_rpc_server_set_rpc_protocol (ProtobufC_RPC_Server *server,
                                              ProtobufC_RPC_Protocol protocol);
