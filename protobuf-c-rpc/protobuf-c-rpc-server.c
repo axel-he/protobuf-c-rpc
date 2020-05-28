@@ -87,6 +87,7 @@ struct _ProtobufC_RPC_Server
   uint8_t proxy_extra_data[sizeof (void*)];
 
   ProtobufC_RPC_Error_Func error_handler;
+  ProtobufC_RPC_ClientEvent_Func client_event_handler;
   void *error_handler_data;
 
   ProtobufC_RPC_Protocol rpc_protocol;
@@ -129,9 +130,12 @@ error_handler (ProtobufC_RPC_Error_Code code,
   ServerConnection *, server->first_connection, server->last_connection, prev, next
 
 static void
-server_connection_close (ServerConnection *conn)
+server_connection_close (ServerConnection *conn, ProtobufC_RPC_ClientDisconnect_Reason reason)
 {
   ProtobufCAllocator *allocator = conn->server->allocator;
+
+  if (conn->server->client_event_handler != NULL)
+    conn->server->client_event_handler (PROTOBUF_C_RPC_CLIENT_EVENT_DISCONNECTED, conn, reason);
 
   /* general cleanup */
   protobuf_c_rpc_dispatch_close_fd (conn->server->dispatch, conn->fd);
@@ -236,7 +240,7 @@ server_connection_failed (ServerConnection *conn,
   /* invoke server error hook */
   server_failed_literal (conn->server, code, msg);
 
-  server_connection_close (conn);
+  server_connection_close (conn, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_BY_REMOTE);
 }
 
 static ServerRequest *
@@ -446,7 +450,7 @@ handle_server_connection_events (int fd,
                                       PROTOBUF_C_RPC_ERROR_CODE_CLIENT_TERMINATED,
                                       "closed while calls pending");
           else
-            server_connection_close (conn);
+            server_connection_close (conn, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_FAILURE);
           return;
         }
       else
@@ -612,6 +616,10 @@ handle_server_listener_readable (int fd,
   GSK_LIST_APPEND (GET_CONNECTION_LIST (server), conn);
   protobuf_c_rpc_dispatch_watch_fd (server->dispatch, conn->fd, PROTOBUF_C_RPC_EVENT_READABLE,
                                 handle_server_connection_events, conn);
+                                
+  if (server->client_event_handler != NULL)
+    server->client_event_handler (PROTOBUF_C_RPC_CLIENT_EVENT_CONNECTED, conn,
+                                PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_NONE);
 }
 
 static ProtobufC_RPC_Server *
@@ -632,6 +640,7 @@ server_new_from_fd (ProtobufC_RPC_FD              listening_fd,
   server->address_type = address_type;
   server->error_handler = error_handler;
   server->error_handler_data = "protobuf-c rpc server";
+  server->client_event_handler = NULL;
   server->listening_fd = listening_fd;
   server->recycled_requests = NULL;
   server->is_rpc_thread_func = NULL;
@@ -776,7 +785,7 @@ protobuf_c_rpc_server_destroy (ProtobufC_RPC_Server *server,
 {
   ProtobufCService *rv = destroy_underlying ? NULL : server->underlying;
   while (server->first_connection != NULL)
-    server_connection_close (server->first_connection);
+    server_connection_close (server->first_connection, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_SERVER_SHUTDOWN);
 
   if (server->address_type == PROTOBUF_C_RPC_ADDRESS_LOCAL)
     unlink (server->bind_name);
@@ -882,6 +891,19 @@ protobuf_c_rpc_server_set_error_handler (ProtobufC_RPC_Server *server,
 {
   server->error_handler = func;
   server->error_handler_data = error_func_data;
+}
+
+void
+protobuf_c_rpc_server_set_clientevent_handler (ProtobufC_RPC_Server *server,
+                                               ProtobufC_RPC_ClientEvent_Func func)
+{
+  server->client_event_handler = func;
+}
+
+void protobuf_c_rpc_server_client_connection_close (ProtobufC_RPC_Server *server,
+                                                    ProtobufC_RPC_ClientConnection *conn)
+{
+  server_connection_close(conn, PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_BY_SERVER);
 }
 
 void

@@ -53,6 +53,28 @@ typedef void (*ProtobufC_RPC_Error_Func)   (ProtobufC_RPC_Error_Code code,
                                             const char              *message,
                                             void                    *error_func_data);
 
+/* Dummy client connection type */
+typedef struct _ServerConnection ProtobufC_RPC_ClientConnection;
+
+typedef enum
+{
+  PROTOBUF_C_RPC_CLIENT_EVENT_CONNECTED,
+  PROTOBUF_C_RPC_CLIENT_EVENT_DISCONNECTED
+} ProtobufC_RPC_ClientEvent_Code;
+
+typedef enum
+{
+  PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_NONE,
+  PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_BY_REMOTE,
+  PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_BY_SERVER,
+  PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_FAILURE,
+  PROTOBUF_C_RPC_CLIENT_DISCONNECT_REASON_SERVER_SHUTDOWN
+} ProtobufC_RPC_ClientDisconnect_Reason;
+
+typedef void (*ProtobufC_RPC_ClientEvent_Func) (ProtobufC_RPC_ClientEvent_Code  code,
+                                                ProtobufC_RPC_ClientConnection *client,
+                                                ProtobufC_RPC_ClientDisconnect_Reason reason);
+
 typedef enum
 {
   PROTOBUF_C_RPC_STATUS_CODE_SUCCESS,
@@ -212,5 +234,13 @@ void protobuf_c_rpc_server_configure_threading (ProtobufC_RPC_Server *server,
 void protobuf_c_rpc_server_set_error_handler (ProtobufC_RPC_Server *server,
                                               ProtobufC_RPC_Error_Func func,
                                               void                 *error_func_data);
+
+/* Client event */
+void protobuf_c_rpc_server_set_clientevent_handler (ProtobufC_RPC_Server *server,
+                                                    ProtobufC_RPC_ClientEvent_Func func);
+
+/* Disconnect client */
+void protobuf_c_rpc_server_client_connection_close (ProtobufC_RPC_Server *server,
+                                                    ProtobufC_RPC_ClientConnection *conn);
 
 #endif
